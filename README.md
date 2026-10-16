@@ -8,6 +8,7 @@
 ![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe-Face%20Landmarker-0097A7?logo=google&logoColor=white)
 ![Privacy](https://img.shields.io/badge/privacy-100%25%20on--device-2EA44F)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
 [Install](#-install) · [How it works](#-how-it-works) · [Usage](#-usage) · [Tuning](#%EF%B8%8F-tuning) · [FAQ](#-faq)
 
@@ -174,5 +175,5 @@ pkill -f "[Pp]ython breathing.py"; rm -rf ~/Applications/Breathing ~/.breathing.
 ---
 
 <div align="center">
-<sub>Built with <a href="https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker">MediaPipe</a>, <a href="https://opencv.org">OpenCV</a> and <a href="https://github.com/jaredks/rumps">rumps</a>.</sub>
+<sub>MIT licensed · Built with <a href="https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker">MediaPipe</a>, <a href="https://opencv.org">OpenCV</a> and <a href="https://github.com/jaredks/rumps">rumps</a>.</sub>
 </div>
