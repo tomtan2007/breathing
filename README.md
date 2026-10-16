@@ -16,8 +16,8 @@
 
 ---
 
-Breathing watches your webcam once a second, measures how far apart your lips are, and when your
-mouth has been hanging open for a few seconds, a small banner slides into the corner of your screen:
+Breathing watches your webcam three times a second, measures how far apart your lips are, and when your
+mouth has been hanging open for 2 seconds, a small banner slides into the corner of your screen:
 
 > **🤐 Close your mouth**
 
@@ -29,7 +29,7 @@ Close it, and the banner disappears on its own. No clicking, no notification pil
 - **Ignores talking.** Normal speech opens and closes the mouth constantly, so it doesn't trigger a reminder.
 - **Calibrated to your face.** A 5-second calibration learns your resting mouth position.
 - **Works at any distance.** The lip gap is measured relative to face size, so leaning in or back doesn't matter.
-- **Light on battery.** It analyses 1 frame per second.
+- **Light on battery.** It analyses just 3 frames per second.
 - **Lives in the menu bar.** Pause, resume, recalibrate or switch cameras from the 🤐 icon.
 - **Private by design.** Every frame is processed locally and thrown away. Nothing is recorded, saved or uploaded.
 
@@ -71,9 +71,9 @@ cd breathing
 
 ```mermaid
 flowchart LR
-    A[📷 Webcam<br/>1 frame/sec] --> B[MediaPipe<br/>Face Landmarker]
+    A[📷 Webcam<br/>3 frames/sec] --> B[MediaPipe<br/>Face Landmarker]
     B --> C[Lip gap ÷<br/>face height]
-    C --> D{Open for ~8s?<br/>≥70% of frames}
+    C --> D{Open for 2s?<br/>≥80% of frames}
     D -- yes --> E[🤐 Show banner]
     D -- no --> A
     E --> F{Mouth closed?}
@@ -84,7 +84,7 @@ flowchart LR
 1. **Detect.** Google's MediaPipe finds 478 points on your face in each frame.
 2. **Measure.** It takes the distance between your inner upper and lower lip and divides it by face height.
 3. **Compare.** A frame counts as *open* when that ratio is clearly above your calibrated resting value.
-4. **Decide.** If at least 70% of the last 8 seconds were open, you get a reminder. Talking flips between
+4. **Decide.** If at least 80% of the last 2 seconds were open, you get a reminder. Talking flips between
    open and closed too often to reach that bar.
 5. **Clear.** The moment your mouth closes, or you leave the desk, the banner hides.
 
@@ -107,11 +107,11 @@ Adjust the constants at the top of [`breathing.py`](breathing.py), then re-run `
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `FPS` | `1` | Frames analysed per second |
-| `WINDOW_SECONDS` | `8` | How long your mouth must look open before a reminder |
-| `OPEN_FRACTION` | `0.7` | Share of frames in that window that must be open |
+| `FPS` | `3` | Frames analysed per second |
+| `WINDOW_SECONDS` | `2` | How long your mouth must look open before a reminder |
+| `OPEN_FRACTION` | `0.8` | Share of frames in that window that must be open |
 | `OPEN_MARGIN` | `0.015` | Lip gap above your resting baseline that counts as open. Lower = more sensitive. |
-| `COOLDOWN_SECONDS` | `90` | Minimum time between reminders |
+| `COOLDOWN_SECONDS` | `10` | Minimum time between reminders |
 | `FACE_LOST_SECONDS` | `3` | How long your face can be out of view before the timer resets |
 | `SOUND_NAME` | `"Purr"` | macOS system sound played with the banner (`""` for silent) |
 | `SOUND_VOLUME` | `0.35` | Sound volume, 0.0–1.0 |
@@ -139,7 +139,7 @@ No. Each frame is analysed in memory and immediately discarded. The only file it
 <summary><b>Will running the camera all day damage it?</b></summary>
 
 No. Webcams have no moving parts and are built for hours of daily video calls. The main cost is
-a little battery, which is why it only checks once per second.
+a little battery, which is why it only checks 3 frames per second.
 </details>
 
 <details>

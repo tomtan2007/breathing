@@ -44,12 +44,12 @@ MODEL_PATH = os.path.join(HERE, "models", "face_landmarker.task")
 CALIBRATION_PATH = os.path.expanduser("~/.breathing.json")
 
 # --- Tuning -----------------------------------------------------------------
-FPS = 1                    # frames analysed per second (low = light on CPU and battery)
-WINDOW_SECONDS = 8         # how long the mouth must look open before a reminder
-OPEN_FRACTION = 0.7        # share of frames in the window that must be "open"
+FPS = 3                    # frames analysed per second (low = light on CPU and battery)
+WINDOW_SECONDS = 2         # how long the mouth must look open before a reminder
+OPEN_FRACTION = 0.8        # share of frames in the window that must be "open"
                            # (talking closes the mouth often, so it won't trigger)
 OPEN_MARGIN = 0.015        # lip gap above your resting baseline that counts as open
-COOLDOWN_SECONDS = 90      # minimum time between reminders
+COOLDOWN_SECONDS = 10      # minimum time between reminders
 CALIBRATION_SECONDS = 4    # mouth-closed sampling time for calibration
 FACE_LOST_SECONDS = 3      # only reset the timer if your face is gone this long
 SOUND_NAME = "Purr"        # macOS system sound played with the banner ("" for silent)
@@ -125,6 +125,10 @@ class ReminderBanner:
         if self.visible:
             self.panel.orderOut_(None)
             self.visible = False
+
+
+def log(message):
+    print(time.strftime("%H:%M:%S"), message, flush=True)
 
 
 def lip_gap_ratio(landmarks):
@@ -334,6 +338,7 @@ class BreathingApp(rumps.App):
                 if self.stop_flag.is_set():
                     break
                 self.switch_camera.clear()
+                log("opening camera: {}".format(self.cameras[self.camera_index][0]))
                 cap = cv2.VideoCapture(self.camera_index)
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 if not cap.isOpened():
@@ -374,8 +379,10 @@ class BreathingApp(rumps.App):
             if alert:
                 self.reminders_today += 1
                 self.banner_wanted = True
+                log("reminder shown (gap {:.3f})".format(ratio))
             elif self.banner_wanted and self.detector.mouth_closed(ratio):
                 self.banner_wanted = False
+                log("reminder cleared")
 
             if calibrating:
                 self.status = "Calibrating… keep mouth closed"
