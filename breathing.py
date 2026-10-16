@@ -13,7 +13,6 @@ import statistics
 import threading
 import time
 
-import AVFoundation
 import cv2
 import mediapipe as mp
 import rumps
@@ -39,6 +38,8 @@ from AppKit import (
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
 
+from camera import Camera, ensure_access, list_cameras
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(HERE, "models", "face_landmarker.task")
 CALIBRATION_PATH = os.path.expanduser("~/.breathing.json")
@@ -52,6 +53,7 @@ OPEN_MARGIN = 0.015        # lip gap above your resting baseline that counts as 
 COOLDOWN_SECONDS = 10      # minimum time between reminders
 CALIBRATION_SECONDS = 4    # mouth-closed sampling time for calibration
 FACE_LOST_SECONDS = 3      # only reset the timer if your face is gone this long
+ANALYSIS_WIDTH = 640       # frames are downscaled to this width before face tracking
 SOUND_NAME = "Purr"        # macOS system sound played with the banner ("" for silent)
 SOUND_VOLUME = 0.35        # 0.0–1.0
 
@@ -224,18 +226,12 @@ def save_setting(key, value):
         json.dump(settings, f)
 
 
-def list_cameras():
-    """(name, is_built_in) for each camera, in the same order OpenCV numbers them."""
-    devices = AVFoundation.AVCaptureDevice.devicesWithMediaType_(AVFoundation.AVMediaTypeVideo)
-    return [(d.localizedName(), "BuiltIn" in str(d.deviceType())) for d in devices]
-
-
 def pick_camera(cameras, preferred_name):
     """Index of the saved camera if it's still connected, else the built-in one, else 0."""
-    names = [name for name, _ in cameras]
+    names = [name for name, _, _ in cameras]
     if preferred_name in names:
         return names.index(preferred_name)
-    for i, (_, built_in) in enumerate(cameras):
+    for i, (_, _, built_in) in enumerate(cameras):
         if built_in:
             return i
     return 0
@@ -252,7 +248,7 @@ class BreathingApp(rumps.App):
         self.camera_index = pick_camera(self.cameras, settings.get("camera"))
         self.switch_camera = threading.Event()
         self.camera_menu = rumps.MenuItem("Camera")
-        for i, (name, _) in enumerate(self.cameras):
+        for i, (name, _, _) in enumerate(self.cameras):
             item = rumps.MenuItem(name, callback=self.choose_camera)
             item.state = int(i == self.camera_index)
             self.camera_menu.add(item)
@@ -300,7 +296,7 @@ class BreathingApp(rumps.App):
             self.title = "🤐"
 
     def choose_camera(self, sender):
-        names = [name for name, _ in self.cameras]
+        names = [name for name, _, _ in self.cameras]
         self.camera_index = names.index(sender.title)
         for item in self.camera_menu.values():
             item.state = int(item.title == sender.title)
@@ -332,37 +328,49 @@ class BreathingApp(rumps.App):
             running_mode=vision.RunningMode.VIDEO,
             num_faces=1,
         )
+        if not ensure_access():
+            self.status = "No camera access (System Settings → Privacy → Camera)"
+            log("camera access denied")
+            return
         with vision.FaceLandmarker.create_from_options(options) as landmarker:
             while not self.stop_flag.is_set():
                 self.running.wait()
                 if self.stop_flag.is_set():
                     break
                 self.switch_camera.clear()
-                log("opening camera: {}".format(self.cameras[self.camera_index][0]))
-                cap = cv2.VideoCapture(self.camera_index)
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                if not cap.isOpened():
-                    self.status = "Can't open camera (check Camera permission)"
-                    time.sleep(5)
+                name, unique_id, _ = self.cameras[self.camera_index]
+                log("opening camera: {}".format(name))
+                try:
+                    cam = Camera(unique_id)
+                except RuntimeError as error:
+                    self.status = "Can't open {}: {}".format(name, error)
+                    log(self.status)
+                    self.switch_camera.wait(5)
                     continue
                 try:
-                    self._process_frames(cap, landmarker)
+                    self._process_frames(cam, landmarker)
                 finally:
-                    cap.release()
+                    cam.release()
                     self.banner_wanted = False
                     if not self.stop_flag.is_set():
                         self.status = "Paused (camera off)"
 
-    def _process_frames(self, cap, landmarker):
+    def _process_frames(self, cam, landmarker):
         start = time.monotonic()
+        first_frame = True
         while self.running.is_set() and not self.stop_flag.is_set() and not self.switch_camera.is_set():
             tick = time.monotonic()
-            ok, frame = cap.read()
-            if not ok:
-                self.status = "Camera read failed"
-                time.sleep(1)
+            frame = cam.read()
+            if frame is None:
+                self.status = "Camera isn't sending frames"
                 continue
+            if first_frame:
+                log("camera started ({}x{})".format(frame.shape[1], frame.shape[0]))
+                first_frame = False
 
+            if frame.shape[1] > ANALYSIS_WIDTH:  # full HD is overkill for finding lips
+                height = int(frame.shape[0] * ANALYSIS_WIDTH / frame.shape[1])
+                frame = cv2.resize(frame, (ANALYSIS_WIDTH, height), interpolation=cv2.INTER_AREA)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             result = landmarker.detect_for_video(image, int((tick - start) * 1000))

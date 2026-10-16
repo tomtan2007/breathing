@@ -1,4 +1,7 @@
 mediapipe==1.1.1
 opencv-python==5.0.0.93
 pyobjc-framework-AVFoundation==11.1
+pyobjc-framework-CoreMedia==11.1
+pyobjc-framework-Quartz==11.1
+pyobjc-framework-libdispatch==11.1
 rumps==0.4.0
