@@ -3,23 +3,26 @@
 A macOS menu bar app that reminds you to close your mouth when you're mouth-breathing.
 
 It watches your webcam (1 frame per second), measures how far apart your lips are using
-Google's MediaPipe face landmarker, and sends a "Close your mouth" notification when your
-mouth has stayed open for about 8 seconds. Talking doesn't trigger it. Everything runs
-locally — no video leaves your Mac.
+Google's MediaPipe face landmarker, and shows a "Close your mouth" banner when your
+mouth has stayed open for about 8 seconds. The banner disappears as soon as you close
+your mouth. Talking doesn't trigger it. Everything runs locally — no video leaves your Mac.
 
-## Setup
+## Install
 
-```bash
-./setup.sh
-```
-
-## Run
+Paste this into the Terminal app:
 
 ```bash
-./run.sh
+curl -fsSL https://raw.githubusercontent.com/tomtan2007/breathing/main/install.sh | bash
 ```
 
-Run it from the Terminal app the first time and allow camera access when macOS asks.
+It installs into `~/Applications/Breathing` and starts the app. Run the same line again
+to update. To start it again later:
+
+```bash
+~/Applications/Breathing/run.sh
+```
+
+Allow camera access when macOS asks.
 A 🤐 icon appears in the menu bar. On first launch it calibrates for a few seconds —
 look at the screen with your mouth closed.
 
@@ -28,11 +31,8 @@ look at the screen with your mouth closed.
 - **Status line** — live mouth reading and today's reminder count
 - **Pause / Resume** — releases the camera entirely (webcam light turns off)
 - **Recalibrate** — re-learn your closed-mouth baseline
-- **Send test notification** — check that notifications get through
+- **Show test reminder** — preview the banner for 3 seconds
 - **Camera** — choose which camera to use (defaults to the built-in one)
-
-If notifications don't appear, allow them for **Script Editor** in
-System Settings → Notifications.
 
 ## Tuning
 
@@ -47,6 +47,15 @@ Constants at the top of `breathing.py`:
 | `COOLDOWN_SECONDS` | 90 | Minimum time between reminders |
 
 Calibration and camera choice are saved in `~/.breathing.json`.
+
+## Manual setup
+
+```bash
+git clone https://github.com/tomtan2007/breathing.git
+cd breathing
+./setup.sh
+./run.sh
+```
 
 ## Limitations
 

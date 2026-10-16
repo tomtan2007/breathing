@@ -1,8 +1,9 @@
 """Menu bar app that reminds you to close your mouth when you mouth-breathe.
 
 Watches the webcam with MediaPipe's face landmarker, measures the gap between
-your inner lips (relative to face size), and sends a macOS notification when
-your mouth has stayed open for a while. Everything runs locally.
+your inner lips (relative to face size), and shows a "Close your mouth" banner
+when your mouth has stayed open for a while. The banner disappears once you
+close your mouth. Everything runs locally.
 """
 
 import collections
@@ -17,6 +18,25 @@ import AVFoundation
 import cv2
 import mediapipe as mp
 import rumps
+from AppKit import (
+    NSBackingStoreBuffered,
+    NSBox,
+    NSBoxCustom,
+    NSColor,
+    NSFont,
+    NSMakeRect,
+    NSPanel,
+    NSScreen,
+    NSSound,
+    NSStatusWindowLevel,
+    NSTextAlignmentCenter,
+    NSTextField,
+    NSWindowCollectionBehaviorCanJoinAllSpaces,
+    NSWindowCollectionBehaviorFullScreenAuxiliary,
+    NSWindowCollectionBehaviorStationary,
+    NSWindowStyleMaskBorderless,
+    NSWindowStyleMaskNonactivatingPanel,
+)
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
 
@@ -46,6 +66,67 @@ def notify(title, message):
         message.replace('"', "'"), title.replace('"', "'")
     )
     subprocess.run(["osascript", "-e", script], check=False)
+
+
+class ReminderBanner:
+    """Floating "Close your mouth" banner in the top-right corner. Main thread only."""
+
+    WIDTH, HEIGHT, MARGIN = 240, 52, 12
+
+    def __init__(self):
+        panel = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+            NSMakeRect(0, 0, self.WIDTH, self.HEIGHT),
+            NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel,
+            NSBackingStoreBuffered,
+            False,
+        )
+        panel.setLevel_(NSStatusWindowLevel)
+        panel.setOpaque_(False)
+        panel.setBackgroundColor_(NSColor.clearColor())
+        panel.setHasShadow_(True)
+        panel.setIgnoresMouseEvents_(True)
+        panel.setHidesOnDeactivate_(False)
+        panel.setCollectionBehavior_(
+            NSWindowCollectionBehaviorCanJoinAllSpaces
+            | NSWindowCollectionBehaviorFullScreenAuxiliary
+            | NSWindowCollectionBehaviorStationary
+        )
+
+        view = NSBox.alloc().initWithFrame_(NSMakeRect(0, 0, self.WIDTH, self.HEIGHT))
+        view.setBoxType_(NSBoxCustom)
+        view.setBorderWidth_(0)
+        view.setCornerRadius_(14)
+        view.setFillColor_(NSColor.colorWithCalibratedWhite_alpha_(0.12, 0.92))
+        view.setTitlePosition_(0)  # NSNoTitle
+        panel.setContentView_(view)
+
+        label = NSTextField.labelWithString_("🤐  Close your mouth")
+        label.setFont_(NSFont.boldSystemFontOfSize_(17))
+        label.setTextColor_(NSColor.whiteColor())
+        label.setAlignment_(NSTextAlignmentCenter)
+        label.sizeToFit()
+        label_height = label.frame().size.height
+        label.setFrame_(NSMakeRect(0, (self.HEIGHT - label_height) / 2, self.WIDTH, label_height))
+        view.addSubview_(label)
+
+        self.panel = panel
+        self.visible = False
+
+    def show(self):
+        if self.visible:
+            return
+        screen = NSScreen.mainScreen().visibleFrame()
+        x = screen.origin.x + screen.size.width - self.WIDTH - self.MARGIN
+        y = screen.origin.y + screen.size.height - self.HEIGHT - self.MARGIN
+        self.panel.setFrameOrigin_((x, y))
+        self.panel.orderFrontRegardless()
+        NSSound.soundNamed_("Glass").play()
+        self.visible = True
+
+    def hide(self):
+        if self.visible:
+            self.panel.orderOut_(None)
+            self.visible = False
 
 
 def lip_gap_ratio(landmarks):
@@ -80,6 +161,12 @@ class MouthDetector:
         self._calib_samples = []
         self._calib_started = self.now()
         self.window.clear()
+
+    def mouth_closed(self, ratio):
+        """True once the mouth is closed again, or the face has been gone a while."""
+        if ratio is None:
+            return self.now() - self.last_face > FACE_LOST_SECONDS
+        return self.baseline is not None and ratio <= self.baseline + OPEN_MARGIN
 
     def update(self, ratio):
         """Feed one lip-gap ratio (None = no face). Returns True when a reminder is due."""
@@ -172,7 +259,7 @@ class BreathingApp(rumps.App):
             None,
             self.toggle_item,
             rumps.MenuItem("Recalibrate (keep mouth closed)", callback=self.recalibrate),
-            rumps.MenuItem("Send test notification", callback=self.test_notification),
+            rumps.MenuItem("Show test reminder", callback=self.test_reminder),
             self.camera_menu,
             None,
             rumps.MenuItem("Quit", callback=self.quit),
@@ -185,6 +272,9 @@ class BreathingApp(rumps.App):
         self.stop_flag = threading.Event()
         self.lock = threading.Lock()
         self._was_calibrating = False
+        self.banner = ReminderBanner()
+        self.banner_wanted = False   # set by the camera thread, drawn by the main thread
+        self.test_banner_until = 0.0
 
         if self.detector.baseline is None:
             self._begin_calibration()
@@ -193,6 +283,7 @@ class BreathingApp(rumps.App):
         self.worker = threading.Thread(target=self._camera_loop, daemon=True)
         self.worker.start()
         rumps.Timer(self._refresh_menu, 1).start()
+        rumps.Timer(self._refresh_banner, 0.25).start()
 
     # --- Menu actions -------------------------------------------------------
     def toggle(self, sender):
@@ -213,8 +304,8 @@ class BreathingApp(rumps.App):
         save_setting("camera", sender.title)
         self.switch_camera.set()  # camera loop reopens with the new index
 
-    def test_notification(self, _):
-        notify("Breathing", "Test notification: reminders will look like this.")
+    def test_reminder(self, _):
+        self.test_banner_until = time.monotonic() + 3
 
     def recalibrate(self, _):
         self._begin_calibration()
@@ -255,6 +346,7 @@ class BreathingApp(rumps.App):
                     self._process_frames(cap, landmarker)
                 finally:
                     cap.release()
+                    self.banner_wanted = False
                     if not self.stop_flag.is_set():
                         self.status = "Paused (camera off)"
 
@@ -284,7 +376,9 @@ class BreathingApp(rumps.App):
 
             if alert:
                 self.reminders_today += 1
-                notify("Close your mouth", "")
+                self.banner_wanted = True
+            elif self.banner_wanted and self.detector.mouth_closed(ratio):
+                self.banner_wanted = False
 
             if calibrating:
                 self.status = "Calibrating… keep mouth closed"
@@ -300,6 +394,12 @@ class BreathingApp(rumps.App):
             remaining = 1.0 / FPS - (time.monotonic() - tick)
             if remaining > 0:
                 time.sleep(remaining)
+
+    def _refresh_banner(self, _):
+        if self.banner_wanted or time.monotonic() < self.test_banner_until:
+            self.banner.show()
+        else:
+            self.banner.hide()
 
     def _refresh_menu(self, _):
         self.status_item.title = "{} · reminders: {}".format(self.status, self.reminders_today)
