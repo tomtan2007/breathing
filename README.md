@@ -17,7 +17,7 @@
 ---
 
 Breathing watches your webcam three times a second, measures how far apart your lips are, and when your
-mouth has been hanging open for 2 seconds, a small banner slides into the corner of your screen:
+mouth has been hanging open for a second, a small banner slides into the corner of your screen:
 
 > **🤐 Close your mouth**
 
@@ -73,7 +73,7 @@ cd breathing
 flowchart LR
     A[📷 Webcam<br/>3 frames/sec] --> B[MediaPipe<br/>Face Landmarker]
     B --> C[Lip gap ÷<br/>face height]
-    C --> D{Open for 2s?<br/>≥80% of frames}
+    C --> D{Open for 1s?<br/>≥80% of frames}
     D -- yes --> E[🤐 Show banner]
     D -- no --> A
     E --> F{Mouth closed?}
@@ -84,7 +84,7 @@ flowchart LR
 1. **Detect.** Google's MediaPipe finds 478 points on your face in each frame.
 2. **Measure.** It takes the distance between your inner upper and lower lip and divides it by face height.
 3. **Compare.** A frame counts as *open* when that ratio is clearly above your calibrated resting value.
-4. **Decide.** If at least 80% of the last 2 seconds were open, you get a reminder. Talking flips between
+4. **Decide.** If at least 80% of the last second were open, you get a reminder. Talking flips between
    open and closed too often to reach that bar.
 5. **Clear.** The moment your mouth closes, or you leave the desk, the banner hides.
 
@@ -108,7 +108,7 @@ Adjust the constants at the top of [`breathing.py`](breathing.py), then re-run `
 | Setting | Default | Meaning |
 |---|---|---|
 | `FPS` | `3` | Frames analysed per second |
-| `WINDOW_SECONDS` | `2` | How long your mouth must look open before a reminder |
+| `WINDOW_SECONDS` | `1` | How long your mouth must look open before a reminder |
 | `OPEN_FRACTION` | `0.8` | Share of frames in that window that must be open |
 | `OPEN_MARGIN` | `0.015` | Lip gap above your resting baseline that counts as open. Lower = more sensitive. |
 | `COOLDOWN_SECONDS` | `10` | Minimum time between reminders |

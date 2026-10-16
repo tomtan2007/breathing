@@ -46,7 +46,7 @@ CALIBRATION_PATH = os.path.expanduser("~/.breathing.json")
 
 # --- Tuning -----------------------------------------------------------------
 FPS = 3                    # frames analysed per second (low = light on CPU and battery)
-WINDOW_SECONDS = 2         # how long the mouth must look open before a reminder
+WINDOW_SECONDS = 1         # how long the mouth must look open before a reminder
 OPEN_FRACTION = 0.8        # share of frames in the window that must be "open"
                            # (talking closes the mouth often, so it won't trigger)
 OPEN_MARGIN = 0.015        # lip gap above your resting baseline that counts as open
