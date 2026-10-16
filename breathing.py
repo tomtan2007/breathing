@@ -10,7 +10,6 @@ import collections
 import json
 import os
 import statistics
-import subprocess
 import threading
 import time
 
@@ -53,19 +52,14 @@ OPEN_MARGIN = 0.015        # lip gap above your resting baseline that counts as 
 COOLDOWN_SECONDS = 90      # minimum time between reminders
 CALIBRATION_SECONDS = 4    # mouth-closed sampling time for calibration
 FACE_LOST_SECONDS = 3      # only reset the timer if your face is gone this long
+SOUND_NAME = "Purr"        # macOS system sound played with the banner ("" for silent)
+SOUND_VOLUME = 0.35        # 0.0–1.0
 
 # Face mesh landmark indices
 UPPER_INNER_LIP = 13
 LOWER_INNER_LIP = 14
 FOREHEAD = 10
 CHIN = 152
-
-
-def notify(title, message):
-    script = 'display notification "{}" with title "{}" sound name "Glass"'.format(
-        message.replace('"', "'"), title.replace('"', "'")
-    )
-    subprocess.run(["osascript", "-e", script], check=False)
 
 
 class ReminderBanner:
@@ -98,6 +92,7 @@ class ReminderBanner:
         view.setCornerRadius_(14)
         view.setFillColor_(NSColor.colorWithCalibratedWhite_alpha_(0.12, 0.92))
         view.setTitlePosition_(0)  # NSNoTitle
+        view.setContentViewMargins_((0, 0))
         panel.setContentView_(view)
 
         label = NSTextField.labelWithString_("🤐  Close your mouth")
@@ -105,9 +100,9 @@ class ReminderBanner:
         label.setTextColor_(NSColor.whiteColor())
         label.setAlignment_(NSTextAlignmentCenter)
         label.sizeToFit()
-        label_height = label.frame().size.height
-        label.setFrame_(NSMakeRect(0, (self.HEIGHT - label_height) / 2, self.WIDTH, label_height))
-        view.addSubview_(label)
+        size = label.frame().size
+        label.setFrameOrigin_(((self.WIDTH - size.width) / 2, (self.HEIGHT - size.height) / 2))
+        view.contentView().addSubview_(label)
 
         self.panel = panel
         self.visible = False
@@ -120,7 +115,10 @@ class ReminderBanner:
         y = screen.origin.y + screen.size.height - self.HEIGHT - self.MARGIN
         self.panel.setFrameOrigin_((x, y))
         self.panel.orderFrontRegardless()
-        NSSound.soundNamed_("Glass").play()
+        sound = NSSound.soundNamed_(SOUND_NAME) if SOUND_NAME else None
+        if sound is not None:
+            sound.setVolume_(SOUND_VOLUME)
+            sound.play()
         self.visible = True
 
     def hide(self):
@@ -194,8 +192,9 @@ class MouthDetector:
         while self.window and t - self.window[0][0] > WINDOW_SECONDS:
             self.window.popleft()
 
+        # Frames arrive slightly more than 1/FPS apart, so allow ~1.5 frames of slack.
         covered = t - self.window[0][0]
-        if covered < WINDOW_SECONDS * 0.9:
+        if covered < WINDOW_SECONDS - 1.5 / FPS:
             return False
         open_share = sum(1 for _, o in self.window if o) / len(self.window)
         if open_share >= OPEN_FRACTION and t - self.last_alert >= COOLDOWN_SECONDS:
@@ -321,7 +320,6 @@ class BreathingApp(rumps.App):
     def _begin_calibration(self):
         with self.lock:
             self.detector.start_calibration()
-        notify("Breathing", "Calibrating: look at the screen with your mouth closed for a few seconds.")
 
     # --- Background camera loop ---------------------------------------------
     def _camera_loop(self):
@@ -371,7 +369,6 @@ class BreathingApp(rumps.App):
 
             if self._was_calibrating and not calibrating:
                 save_setting("baseline", self.detector.baseline)
-                notify("Breathing", "Calibration done. Monitoring started.")
             self._was_calibrating = calibrating
 
             if alert:

@@ -113,6 +113,8 @@ Adjust the constants at the top of [`breathing.py`](breathing.py), then re-run `
 | `OPEN_MARGIN` | `0.015` | Lip gap above your resting baseline that counts as open. Lower = more sensitive. |
 | `COOLDOWN_SECONDS` | `90` | Minimum time between reminders |
 | `FACE_LOST_SECONDS` | `3` | How long your face can be out of view before the timer resets |
+| `SOUND_NAME` | `"Purr"` | macOS system sound played with the banner (`""` for silent) |
+| `SOUND_VOLUME` | `0.35` | Sound volume, 0.0–1.0 |
 
 Calibration and your camera choice are saved in `~/.breathing.json`.
 
